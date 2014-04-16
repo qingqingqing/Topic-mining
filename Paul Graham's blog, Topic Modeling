@@ -1,0 +1,255 @@
+import bs4
+from bs4 import BeautifulSoup
+import urllib2
+import re
+import nltk
+from nltk.corpus import brown
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+from nltk.stem.lancaster import LancasterStemmer
+from gensim import corpora, models, similarities
+import logging
+ 
+
+
+ 
+
+
+url_0 = 'http://www.aaronsw.com/2002/feeds/pgessays.rss'
+url = urllib2.Request(url_0)
+html = urllib2.urlopen(url)
+soup = BeautifulSoup(html)
+
+
+titles = [t.text for t in soup.find_all('title')]
+titles.pop(153)
+titles.pop(153)
+ 
+ 
+
+
+Linkstitles = [t.text for t in soup.find_all('item')]
+splitLT = [t.split('\n') for t in Linkstitles]
+Links_urls = [t[1] for t in splitLT]
+Links_urls.pop(153)
+Links_urls.pop(153)
+## note there are two links ended with 'txt', we delete these two links. 
+
+
+
+def getallBlogs(listOfUrls):
+    texts = []
+    for i in range(len(listOfUrls)):
+        html = urllib2.urlopen(listOfUrls[i]) 
+        soup = BeautifulSoup(html)
+        body = soup.body
+        texts.append(body.text)
+    return texts
+
+
+
+texts = getallBlogs(Links_urls)
+ 
+
+ 
+ 
+ 
+ 
+
+
+### pre-processing texts
+
+
+
+english_stopwords = stopwords.words('english')
+st = LancasterStemmer()
+
+
+text_re_num_punc = [re.findall(r'[a-zA-Z]+',doc) for doc in texts]
+text_lower_stopwords = [[t.lower() for t in doc if t not in english_stopwords] for doc in text_re_num_punc]
+text_stem = [[st.stem(w) for w in doc] for doc in text_lower_stopwords]
+
+all_text_stem = sum(text_stem,[])
+stem_once = set(w for w in set(all_text_stem) if all_text_stem.count(w)==1)
+x = [[w for w in doc if w not in stem_once] for doc in text_stem]
+
+
+
+
+
+print len(x)
+print [len(doc) for doc in x]
+
+'''
+154
+[1091, 5667, 431, 590, 1958, 2346, 1620, 3951, 248, 2941, 1169, 122, 633, 540, 2052, 415, 496, 480, 980, 402, 727, 449, 302, 441, 2024, 582, 414, 1185, 2197, 711, 660, 404, 572, 1244, 2739, 738, 996, 770, 828, 447, 216, 1046, 651, 769, 80, 243, 419, 553, 2179, 859, 1068, 1628, 716, 465, 1338, 764, 848, 733, 601, 2665, 723, 1979, 662, 2862, 1656, 762, 1460, 870, 1405, 1081, 504, 652, 828, 1834, 2569, 1209, 1083, 968, 736, 575, 294, 3423, 417, 708, 3368, 2014, 480, 1965, 3024, 3437, 1552, 553, 442, 3273, 2631, 2067, 2628, 312, 2637, 388, 212, 2474, 996, 1888, 4924, 896, 2198, 1387, 1586, 338, 2430, 2634, 1342, 1730, 563, 250, 1999, 808, 5215, 2760, 1070, 811, 357, 2350, 2024, 2506, 277, 2874, 3065, 4827, 1119, 2967, 496, 3017, 249, 2639, 3120, 2464, 1419, 3003, 3305, 1620, 149, 2379, 298, 393, 6678, 202, 1641, 4314, 774, 2520, 31, 525]
+'''
+
+
+
+ 
+
+logging.basicConfig(format = '%(asctime)s: %(levelname)s:%(message)s', level = logging.INFO)
+
+dictionary = corpora.Dictionary(x)
+corpus = [dictionary.doc2bow(text) for text in x]
+tfidf = models.TfidfModel(corpus)
+corpus_tfidf = tfidf[corpus]
+
+
+
+lda = models.ldamodel.LdaModel(corpus=corpus_tfidf, id2word=dictionary, num_topics=10, update_every=0, passes=10)
+indexLda = similarities.Similarity('C:/Users/inception/Desktop/New folder',lda[corpus], num_features =10, num_best = 10)
+
+lsi = models.LsiModel(corpus = corpus_tfidf, id2word = dictionary, num_topics = 5)
+index = similarities.Similarity('C:/Users/inception/Desktop/New folder',lsi[corpus], num_features =10, num_best = 10)
+
+ 
+
+
+for i in range(lsi.num_topics):
+    print lsi.print_topic(i)
+
+'''
+-0.275*"startup" + -0.231*"invest" + -0.138*"vcs" + -0.115*"company" + -0.109*"langu" + -0.109*"money" + -0.105*"angel" + -0.099*"program" + -0.087*"found" + -0.085*"hack"
+-0.439*"langu" + -0.395*"lisp" + 0.310*"invest" + -0.265*"program" + 0.181*"vcs" + 0.177*"angel" + 0.174*"startup" + -0.124*"design" + 0.120*"round" + 0.101*"rais"
+-0.350*"invest" + -0.343*"lisp" + -0.315*"langu" + -0.239*"angel" + -0.228*"vcs" + -0.162*"round" + -0.136*"program" + -0.126*"rais" + -0.117*"vc" + 0.102*"colleg"
+-0.411*"valley" + -0.347*"silicon" + 0.274*"spam" + -0.250*"city" + -0.197*"hub" + -0.152*"town" + -0.151*"startup" + -0.144*"boston" + 0.122*"filt" + -0.112*"lisp"
+-0.709*"spam" + -0.311*"filt" + -0.148*"mail" + -0.143*"tok" + -0.140*"valley" + -0.119*"silicon" + -0.099*"email" + -0.096*"retriev" + -0.094*"auto" + -0.091*"url"
+'''
+for i in range(lda.num_topics):
+    print lda.print_topic(i)
+
+
+'''
+0.001*excerpt + 0.001*hapless + 0.001*bbn + 0.001*aristotl + 0.001*relentless + 0.001*smel + 0.001*antidot + 0.001*metaphys + 0.001*liberty + 0.001*asci
+0.002*fem + 0.002*segway + 0.001*tablet + 0.001*rid + 0.001*ipad + 0.001*graham + 0.001*feb + 0.001*deadlock + 0.001*iphon + 0.001*jerk
+0.003*pat + 0.001*pledg + 0.001*oxley + 0.001*sarb + 0.001*fort + 0.001*housem + 0.001*foo + 0.001*cald + 0.001*pointy + 0.001*wodeh
+0.004*spam + 0.002*filt + 0.001*relig + 0.001*octopart + 0.001*thump + 0.001*unsuccess + 0.001*mail + 0.001*tok + 0.001*kludg + 0.001*fort
+0.001*addict + 0.001*smok + 0.001*hik + 0.000*cigaret + 0.000*antibody + 0.000*ashtray + 0.000*alcohol + 0.000*heroin + 0.000*iphon + 0.000*legisl
+0.002*schlep + 0.002*protocol + 0.002*twit + 0.001*errand + 0.001*schleps + 0.001*kerry + 0.001*elect + 0.001*stripe + 0.001*charism + 0.001*formid
+0.001*ineq + 0.001*lad + 0.001*artix + 0.001*recess + 0.001*hn + 0.001*taboo + 0.001*mac + 0.001*grisham + 0.001*sinec + 0.001*powerbook
+0.004*startup + 0.004*invest + 0.003*langu + 0.002*program + 0.002*vcs + 0.002*lisp + 0.002*company + 0.002*money + 0.002*hack + 0.002*valley
+0.002*succinct + 0.001*ory + 0.001*dh + 0.001*persuad + 0.001*steam + 0.001*refut + 0.001*disc + 0.001*barbershop + 0.001*protocol + 0.001*revolv
+0.002*regret + 0.001*iphon + 0.001*tv + 0.001*digress + 0.001*melon + 0.001*dream + 0.001*foul + 0.001*footnot + 0.001*omit + 0.001*synchron
+'''
+
+
+
+
+
+  
+
+
+def searchEngLsi(query):
+    
+    query = query.lower().split()
+    query_bow = dictionary.doc2bow(query)
+    query_lsi= lsi[query_bow]
+    
+    sims = index[query_lsi] 
+    sort_sims = sorted(sims, key = lambda item: item[1], reverse = True)
+
+    results = []
+    for t in sort_sims:
+        results.append(titles[t[0]])
+    return results
+ 
+
+
+def searchEngLda(query):
+    
+    query = query.lower().split()
+    query_bow = dictionary.doc2bow(query)
+    query_lda= lda[query_bow]
+    
+    sims = indexLda[query_lda] 
+    sort_sims = sorted(sims, key = lambda item: item[1], reverse = True)
+
+    results = []
+    for t in sort_sims:
+        results.append(titles[t[0]])
+    return results
+
+ 
+ 
+print searchEngLsi('design product')
+
+'''
+[u'The Age of the Essay',
+u'The Roots of Lisp',
+u'Being Popular',
+u'Revenge of the Nerds',
+u'If Lisp is So Great',
+u'Taste for Makers',
+u'Chapter 2 of Ansi Common Lisp',
+u'Five Questions about Language Design',
+u'Hackers and Painters',
+u'A Plan for Spam']
+'''
+print searchEngLda('design product')
+
+'''
+[u'A New Venture Animal',
+u'The New Funding Landscape',
+u'Writing and Speaking',
+u'Some Heroes',
+u'Founder Control',
+u'Taste for Makers',
+u'The Hardest Lessons for Startups to Learn',
+u'Five Founders',
+u'Tablets',
+u'See Randomness']
+'''
+
+ 
+
+
+
+
+
+
+ 
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
